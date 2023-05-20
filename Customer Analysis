@@ -1,1 +1,227 @@
+-- 525,461 Total Record 
+SELECT *
+FROM Online_Retail2009_2010
 
+--- 541,910 Total Record
+SELECT *
+FROM Online_Retail2010_2011
+
+
+--- Cleaning Data
+WITH online_retail AS (
+    SELECT [Invoice]
+        ,[StockCode]
+        ,[Description]
+        ,[Quantity]
+        ,[InvoiceDate]
+        ,[Price]
+        ,[Customer_ID]
+        ,[Country]
+    FROM (
+        SELECT * FROM [master].[dbo].[Online_Retail2009_2010]
+        UNION ALL
+        SELECT * FROM [master].[dbo].[Online_Retail2010_2011]
+    ) AS all_data
+    WHERE [Customer_ID] IS NOT NULL AND [Quantity] > 0
+    ---22,950 has a quantity of less than 0
+    ---243,007 has a record with a NULL customer_ID
+),
+--- Give the data of each customer with their first purchase with their most recent purchase
+customer_summary AS (
+    SELECT [Customer_ID]
+        ,MIN([InvoiceDate]) AS [FirstPurchaseDate]
+        ,MAX([InvoiceDate]) AS [MostRecentPurchaseDate]
+    FROM online_retail
+    GROUP BY [Customer_ID]
+)
+
+SELECT o.*
+   ,s.[FirstPurchaseDate]
+    ,s.[MostRecentPurchaseDate]
+FROM online_retail o
+LEFT JOIN customer_summary s ON o.[Customer_ID] = s.[Customer_ID]
+
+
+
+--- Total Revnue of 17,743,429
+SELECT SUM(price * quantity) AS Total_revenue
+FROM online_retail
+
+--- Customer_ID '18102' brought in the most revenue
+SELECT [Customer_ID], SUM([Price]*[Quantity]) AS [TotalRevenue]
+FROM online_retail
+GROUP BY [Customer_ID]
+ORDER BY [TotalRevenue] DESC
+
+--- Customer_ID '16446' on average makes the most orders
+SELECT [Customer_ID], AVG([Price]*[Quantity]) AS [AvgRevenuePerOrder]
+FROM online_retail
+GROUP BY [Customer_ID]
+ORDER BY AvgRevenuePerOrder DESC
+
+---United Kingdom  spends the most
+SELECT [Country], COUNT(DISTINCT [Invoice]) AS [TotalOrders], SUM([Quantity] * [Price]) AS [TotalSpend]
+FROM online_retail
+WHERE [Customer_ID] IS NOT NULL AND [Quantity] > 0
+GROUP BY [Country]
+ORDER BY [TotalSpend] DESC;
+
+
+---Gives the monthly change and percentage for each month
+WITH online_retail AS (
+    SELECT [Invoice]
+        ,[StockCode]
+        ,[Description]
+        ,[Quantity]
+        ,[InvoiceDate]
+        ,[Price]
+        ,[Customer_ID]
+        ,[Country]
+    FROM (
+        SELECT * FROM [master].[dbo].[Online_Retail2009_2010]
+        UNION ALL
+        SELECT * FROM [master].[dbo].[Online_Retail2010_2011]
+    ) AS all_data
+    WHERE [Customer_ID] IS NOT NULL AND [Quantity] > 0
+   
+),
+customer_summary AS (
+    SELECT [Customer_ID]
+        ,MIN([InvoiceDate]) AS [FirstPurchaseDate]
+        ,MAX([InvoiceDate]) AS [MostRecentPurchaseDate]
+    FROM online_retail
+    GROUP BY [Customer_ID]
+),
+revenue_data AS (
+    SELECT 
+        YEAR([InvoiceDate]) AS [Year], 
+        MONTH([InvoiceDate]) AS [Month], 
+        SUM([Quantity] * [Price]) AS [Revenue]
+    FROM [Online_Retail]
+    GROUP BY YEAR([InvoiceDate]), MONTH([InvoiceDate])
+)
+
+SELECT 
+    [Year], 
+    [Month], 
+    [Revenue],
+    [Revenue] - LAG([Revenue]) OVER (ORDER BY [Year], [Month]) AS [MonthlyChange],
+    ([Revenue] - LAG([Revenue]) OVER (ORDER BY [Year], [Month])) / LAG([Revenue]) OVER (ORDER BY [Year], [Month]) AS [MonthlyChangePct]
+FROM revenue_data
+ORDER BY [Year], [Month]
+
+--- 5881 Were new customers
+WITH online_retail AS (
+    SELECT [Invoice]
+        ,[StockCode]
+        ,[Description]
+        ,[Quantity]
+        ,[InvoiceDate]
+        ,[Price]
+        ,[Customer_ID]
+        ,[Country]
+        ,DATEADD(MONTH, DATEDIFF(MONTH, 0, [InvoiceDate]), 0) AS InvoiceMonth
+    FROM (
+        SELECT * FROM [master].[dbo].[Online_Retail2009_2010]
+        UNION ALL
+        SELECT * FROM [master].[dbo].[Online_Retail2010_2011]
+    ) AS all_data
+    WHERE [Customer_ID] IS NOT NULL AND [Quantity] > 0
+),
+first_purchases AS (
+    SELECT DISTINCT [Customer_ID], MIN(InvoiceMonth) AS FirstPurchaseMonth
+    FROM online_retail
+    GROUP BY [Customer_ID]
+)
+
+SELECT 
+    FORMAT(FirstPurchaseMonth, 'yyyy-MM') AS MonthYear, 
+    COUNT(fp.[Customer_ID]) AS NewCustomers
+FROM first_purchases fp
+GROUP BY FORMAT(FirstPurchaseMonth, 'yyyy-MM')
+ORDER BY MonthYear
+
+
+--- Create a pivot table of all customers who made their first purchase and when customer returned in the proper date range their multiple purchase.
+WITH online_retail AS (
+    SELECT [Invoice]
+        ,[StockCode]
+        ,[Description]
+        ,[Quantity]
+        ,[InvoiceDate]
+        ,[Price]
+        ,[Customer_ID]
+        ,[Country]
+    FROM (
+        SELECT * FROM [master].[dbo].[Online_Retail2009_2010]
+        UNION ALL
+        SELECT * FROM [master].[dbo].[Online_Retail2010_2011]
+    ) AS all_data
+    WHERE [Customer_ID] IS NOT NULL AND [Quantity] > 0
+),
+customer_summary AS (
+    SELECT [Customer_ID]
+        ,MIN([InvoiceDate]) AS [FirstPurchaseDate]
+        ,MAX([InvoiceDate]) AS [MostRecentPurchaseDate]
+    FROM online_retail
+    GROUP BY [Customer_ID]
+),
+quantity_unit_price AS (
+    SELECT *
+    FROM online_retail
+    WHERE Quantity > 0 AND Price > 0 AND Customer_ID IS NOT NULL
+),
+first_purchase AS (
+    SELECT Customer_ID, MIN(InvoiceDate) AS FirstPurchaseDate
+    FROM online_retail
+    WHERE Customer_ID IS NOT NULL
+    GROUP BY Customer_ID
+),
+purchases AS (
+    SELECT o.Customer_ID,
+           fp.FirstPurchaseDate,
+           o.InvoiceDate,
+           DATEDIFF(day, fp.FirstPurchaseDate, o.InvoiceDate) AS DaysSinceFirstPurchase
+    FROM online_retail o
+    LEFT JOIN first_purchase fp ON o.Customer_ID = fp.Customer_ID
+    WHERE o.Customer_ID IS NOT NULL
+),
+categorized_purchases AS (
+    SELECT Customer_ID,
+           FirstPurchaseDate,
+           InvoiceDate,
+           CASE
+               WHEN DaysSinceFirstPurchase <= 30 THEN '0-30'
+               WHEN DaysSinceFirstPurchase <= 60 THEN '31-60'
+               WHEN DaysSinceFirstPurchase <= 90 THEN '61-90'
+               WHEN DaysSinceFirstPurchase <= 120 THEN '91-120'
+               WHEN DaysSinceFirstPurchase <= 150 THEN '121-150'
+               WHEN DaysSinceFirstPurchase <= 180 THEN '151-180'
+               WHEN DaysSinceFirstPurchase <= 210 THEN '181-210'
+               WHEN DaysSinceFirstPurchase <= 240 THEN '211-240'
+               WHEN DaysSinceFirstPurchase <= 270 THEN '241-270'
+               WHEN DaysSinceFirstPurchase <= 300 THEN '271-300'
+               WHEN DaysSinceFirstPurchase <= 330 THEN '301-330'
+               WHEN DaysSinceFirstPurchase <= 360 THEN '331-360'
+               ELSE '361+'
+           END AS DaysSinceFirstPurchaseCategory
+    FROM purchases
+    WHERE Customer_ID IS NOT NULL
+),
+pivot_columns AS (
+    SELECT DISTINCT DaysSinceFirstPurchaseCategory
+    FROM categorized_purchases
+),
+pivot_query AS (
+    SELECT Customer_ID, FirstPurchaseDate, [0-30], [31-60], [61-90], [91-120], [121-150], [151-180], [181-210], [211-240], [241-270], [271-300], [301-330], [331-360], [361+]
+    FROM (
+        SELECT Customer_ID, FirstPurchaseDate, DaysSinceFirstPurchaseCategory
+        FROM categorized_purchases
+    ) AS src
+    PIVOT (
+        COUNT(DaysSinceFirstPurchaseCategory)
+        FOR DaysSinceFirstPurchaseCategory IN ([0-30], [31-60], [61-90], [91-120], [121-150], [151-180], [181-210], [211-240], [241-270], [271-300], [301-330], [331-360], [361+])
+    ) AS pvt
+)
+SELECT *
+FROM pivot_query
