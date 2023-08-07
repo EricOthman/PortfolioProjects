@@ -1,0 +1,111 @@
+SELECT *
+FROM Video_game_sales
+
+
+--Top Video GamesSales
+SELECT 
+SUM(NA_Sales) AS TotalNASales,
+SUM(EU_Sales) AS TotalEUSales,
+SUM(JP_Sales) AS TotalJPSales,
+SUM(Other_Sales) AS TotalOtherSales,
+SUM(Global_Sales) AS TotalGlobalSales
+FROM Video_game_sales
+
+--Top global games by global sales
+SELECT Name, Global_Sales
+FROM Video_game_sales
+ORDER BY Global_Sales DESC
+
+--Sales breakdown by platform
+SELECT Platform, SUM(Global_Sales) AS TotalGlobalSales
+FROM Video_game_sales
+GROUP BY Platform
+ORDER BY TotalGlobalSales DESC;
+
+-- Sales breakdown by genre
+SELECT Genre, SUM(Global_Sales) AS TotalGlobalSales
+FROM Video_game_sales
+GROUP BY Genre
+ORDER BY TotalGlobalSales DESC;
+
+--Sales by publisher
+SELECT Publisher, SUM(Global_Sales) AS TotalGlobalSales
+FROM Video_game_sales
+GROUP BY Publisher
+ORDER BY TotalGlobalSales DESC;
+
+--- Top yearly sales trend by Total global sales
+SELECT Year, SUM(Global_Sales) AS TotalGlobalSales
+FROM Video_game_sales
+GROUP BY Year
+ORDER BY TotalGlobalSales DESC;
+
+--- Top selling games by region
+SELECT Name, NA_Sales, EU_Sales, JP_Sales, Other_Sales
+FROM Video_game_sales
+ORDER BY (NA_Sales + EU_Sales + JP_Sales + Other_Sales) DESC;
+
+---Avg sales by platform
+SELECT Platform, AVG(Global_Sales) AS AverageGlobalSales
+FROM Video_game_sales
+GROUP BY Platform
+ORDER BY AverageGlobalSales DESC;
+
+--- Yearly sales percentage change compared to the previous year
+SELECT
+  Year,
+  AVG(Global_Sales) AS AverageGlobalSales,
+  ROUND(((AVG(Global_Sales) - LAG(AVG(Global_Sales)) OVER (ORDER BY Year)) / LAG(AVG(Global_Sales)) OVER (ORDER BY Year)) * 100, 2) AS SalesPercentageChange
+FROM Video_game_sales
+GROUP BY Year
+ORDER BY Year;
+
+--Total sales for each genre, including the percentage contribution to overall sales:
+SELECT
+  Genre,
+  SUM(Global_Sales) AS TotalGlobalSales,
+  (SUM(Global_Sales) / (SELECT SUM(Global_Sales) FROM Video_game_sales)) * 100 AS SalesPercentage
+FROM Video_game_sales
+GROUP BY Genre
+ORDER BY TotalGlobalSales DESC;
+
+---Identify the top-selling publisher in each region:
+SELECT
+  Publisher,
+  SUM(NA_Sales) AS TotalNA_Sales,
+  SUM(EU_Sales) AS TotalEU_Sales,
+  SUM(JP_Sales) AS TotalJP_Sales,
+  SUM(Other_Sales) AS TotalOther_Sales
+FROM Video_game_sales
+GROUP BY Publisher
+HAVING (SUM(NA_Sales) + SUM(EU_Sales) + SUM(JP_Sales) + SUM(Other_Sales)) =
+  (SELECT MAX(sales)
+   FROM (
+       SELECT (SUM(NA_Sales) + SUM(EU_Sales) + SUM(JP_Sales) + SUM(Other_Sales)) AS sales
+       FROM Video_game_sales
+       GROUP BY Publisher
+   ) AS subquery);
+
+ 
+ 
+--- What is the average sales per game for the top 10 publishers with the highest number of games released?
+SELECT TOP 10 Publisher, COUNT(*) AS NumGames, SUM(Global_Sales) / COUNT(*) AS AvgSalesPerGame
+FROM Video_game_sales
+WHERE Publisher IN (
+    SELECT TOP 10 Publisher
+    FROM Video_game_sales
+    GROUP BY Publisher
+    ORDER BY COUNT(*) DESC
+)
+GROUP BY Publisher
+ORDER BY NumGames DESC;
+
+---Which platform has the highest cumulative sales in each year?
+SELECT Year, Platform, TotalSales
+FROM (
+    SELECT Year, Platform, SUM(Global_Sales) AS TotalSales,
+           ROW_NUMBER() OVER (PARTITION BY Year ORDER BY SUM(Global_Sales) DESC) AS rn
+    FROM Video_game_sales
+    GROUP BY Year, Platform
+) AS subquery
+WHERE rn = 1;

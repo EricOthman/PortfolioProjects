@@ -1,0 +1,35 @@
+Top-Selling Video Games Globally and Their Genres:
+
+SELECT TOP 10 Name, Global_Sales, Genre
+FROM Video_game_sales
+ORDER BY Global_Sales DESC;
+
+Dominant Gaming Platforms with Highest Cumulative Sales Over the Years:
+
+SELECT Year, Platform, SUM(Global_Sales) AS TotalSales
+FROM Video_game_sales
+GROUP BY Year, Platform
+ORDER BY Year, TotalSales DESC;
+
+Regional Sales Figures for Video Games in Different Regions, and Top Games/Genres in Each Region:
+
+SELECT 
+  Region,
+  Name,
+  Genre,
+  SUM(Sales) AS TotalSales
+FROM (
+  SELECT Name, Genre, NA_Sales AS Sales, 'North America' AS Region
+  FROM Video_game_sales
+  UNION ALL
+  SELECT Name, Genre, EU_Sales AS Sales, 'Europe' AS Region
+  FROM Video_game_sales
+  UNION ALL
+  SELECT Name, Genre, JP_Sales AS Sales, 'Japan' AS Region
+  FROM Video_game_sales
+  UNION ALL
+  SELECT Name, Genre, Other_Sales AS Sales, 'Other Regions' AS Region
+  FROM Video_game_sales
+) AS subquery
+GROUP BY Region, Name, Genre
+ORDER BY Region, TotalSales DESC;
